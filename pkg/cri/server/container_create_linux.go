@@ -52,6 +52,8 @@ const (
 	unconfinedProfile = "unconfined"
 	// seccompDefaultProfile is the default seccomp profile.
 	seccompDefaultProfile = dockerDefault
+	// hostDeviceSupplementalGroupPrefix prefixed annotations (set by the device plugins) specify GIDs to be added to SupplementalGroups to allow non-root containers use devices
+	hostDeviceSupplementalGroupPrefix = "io.kubernetes.cri.hostDeviceSupplementalGroup/"
 )
 
 // containerMounts sets up necessary container system file mounts
@@ -106,6 +108,18 @@ func (c *criService) containerMounts(sandboxID string, config *runtime.Container
 		})
 	}
 	return mounts
+}
+
+func getHostDeviceSupplementalGroups(annotations map[string]string) []int64 {
+	deviceGids := make([]int64, 0)
+	for k, v := range annotations {
+		if strings.HasPrefix(k, hostDeviceSupplementalGroupPrefix) {
+			if gid, err := strconv.ParseInt(v, 10, 64); err == nil {
+				deviceGids = append(deviceGids, gid)
+			}
+		}
+	}
+	return deviceGids
 }
 
 func (c *criService) containerSpec(id string, sandboxID string, sandboxPid uint32, netNSPath string, containerName string,
@@ -242,7 +256,8 @@ func (c *criService) containerSpec(id string, sandboxID string, sandboxPid uint3
 		}
 	}
 
-	supplementalGroups := securityContext.GetSupplementalGroups()
+	// TODO(mythi): find the right place for getHostDeviceSupplementalGroups()
+	supplementalGroups := append(securityContext.GetSupplementalGroups(), getHostDeviceSupplementalGroups(config.GetAnnotations())...)
 
 	for pKey, pValue := range getPassthroughAnnotations(sandboxConfig.Annotations,
 		ociRuntime.PodAnnotations) {
