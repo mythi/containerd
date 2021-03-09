@@ -40,6 +40,7 @@ import (
 	"golang.org/x/sys/unix"
 	runtime "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 
+	ann "github.com/containerd/containerd/pkg/cri/annotations"
 	"github.com/containerd/containerd/pkg/cri/util"
 	osinterface "github.com/containerd/containerd/pkg/os"
 )
@@ -312,6 +313,35 @@ func addDevice(s *runtimespec.Spec, rd runtimespec.LinuxDevice) {
 	s.Linux.Devices = append(s.Linux.Devices, rd)
 }
 
+func disableDeviceOwnershipFromSecurityContext(annotations map[string]string) bool {
+	if v, ok := annotations[ann.DisableDeviceOwnershipFromSecurityContext]; ok {
+		if v == "true" {
+			return true
+		}
+	}
+	return false
+}
+
+func getDeviceUID(config *runtime.ContainerConfig, hostUID uint32) *uint32 {
+	if userval := config.GetLinux().GetSecurityContext().GetRunAsUser(); userval != nil {
+		uid := uint32(userval.GetValue())
+		if uid > 0 && !disableDeviceOwnershipFromSecurityContext(config.GetAnnotations()) {
+			return &uid
+		}
+	}
+	return &hostUID
+}
+
+func getDeviceGID(config *runtime.ContainerConfig, hostGID uint32) *uint32 {
+	if groupval := config.GetLinux().GetSecurityContext().GetRunAsGroup(); groupval != nil {
+		gid := uint32(groupval.GetValue())
+		if gid > 0 && !disableDeviceOwnershipFromSecurityContext(config.GetAnnotations()) {
+			return &gid
+		}
+	}
+	return &hostGID
+}
+
 // WithDevices sets the provided devices onto the container spec
 func WithDevices(osi osinterface.OS, config *runtime.ContainerConfig) oci.SpecOpts {
 	return func(ctx context.Context, client oci.Client, c *containers.Container, s *runtimespec.Spec) (err error) {
@@ -335,8 +365,8 @@ func WithDevices(osi osinterface.OS, config *runtime.ContainerConfig) oci.SpecOp
 				Type:  string(dev.Type),
 				Major: dev.Major,
 				Minor: dev.Minor,
-				UID:   &dev.Uid,
-				GID:   &dev.Gid,
+				UID:   getDeviceUID(config, dev.Uid),
+				GID:   getDeviceGID(config, dev.Gid),
 			}
 
 			addDevice(s, rd)
