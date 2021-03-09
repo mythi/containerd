@@ -44,10 +44,10 @@ func WithHostDevices(_ context.Context, _ Client, _ *containers.Container, s *Sp
 
 var errNotADevice = errors.New("not a device node")
 
-// WithDevices recursively adds devices from the passed in path and associated cgroup rules for that device.
+// WithDevices recursively adds devices from the passed in path.
 // If devicePath is a dir it traverses the dir to add all devices in that dir.
 // If devicePath is not a dir, it attempts to add the signle device.
-func WithDevices(devicePath, containerPath, permissions string) SpecOpts {
+func WithDevices(devicePath, containerPath, permissions, ownership string) SpecOpts {
 	return func(_ context.Context, _ Client, _ *containers.Container, s *Spec) error {
 		devs, err := getDevices(devicePath, containerPath)
 		if err != nil {
